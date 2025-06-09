@@ -176,63 +176,68 @@ def create_app():
 
     @app.route("/predict_batch", methods=["POST"])
     def predict_batch():
-        data = request.get_json()
-        
-        if not data or "rows" not in data:
-            return jsonify({"error": "No data provided or missing 'rows' field"}), 400
-        
-        if not isinstance(data["rows"], list):
-            return jsonify({"error": "'rows' must be an array of quote objects"}), 400
-        
-        if len(data["rows"]) == 0:
-            return jsonify({"results": []}), 200
+        try:
+            data = request.get_json()
             
-        # Log the batch size and sample of the first request
-        logger.info(f"Processing batch prediction request with {len(data['rows'])} rows")
-        if len(data["rows"]) > 0:
-            logger.info(f"First row sample: {json.dumps(data['rows'][0])[:200]}...")
-        
-        # Process each row to extract features
-        all_features = []
-        for i, row in enumerate(data["rows"]):
-            try:
-                # Log the customer name for debugging purposes only
-                account_name = None
-                if "Accountname" in row:
-                    account_name = row["Accountname"]
-                elif "accountname" in row:
-                    account_name = row["accountname"]
+            if not data or "rows" not in data:
+                return jsonify({"error": "No data provided or missing 'rows' field"}), 400
+            
+            if not isinstance(data["rows"], list):
+                return jsonify({"error": "'rows' must be an array of quote objects"}), 400
+            
+            if len(data["rows"]) == 0:
+                return jsonify({"results": []}), 200
                 
-                if account_name:
-                    # Just log the customer name for debugging - all processing happens in feature_extractor
-                    logger.info(f"Row {i+1} - Processing customer: '{account_name}'")
-                    if not feature_extractor.recurring_customers:
-                        logger.warning("No recurring customers loaded!")
-                
-                # Transform to features
-                _, features, _ = feature_extractor.transform_quote(row)
-                all_features.append(features)
-                
-                # Log the last feature (recurring flag) and feature count
-                logger.info(f"Processed row {i+1}/{len(data['rows'])} - Last feature (recurring): {features[-1]}, Total features: {len(features)}")
-            except Exception as e:
-                logger.error(f"Error processing row {i+1}: {str(e)}")
-                return jsonify({"error": f"Error processing row {i+1}: {str(e)}"}), 400
-        
-        # Convert to numpy array for batch prediction
-        features_array = np.array(all_features)
-        
-        # Get prediction results
-        results = process_prediction(features_array)
-        
-        # Log final results before returning
-        logger.info(f"Batch processing complete. Returning {len(results)} results")
-        logger.info(f"Final results sample: {json.dumps(results[:min(3, len(results))])}")
-        
-        # Return batch results with prediction, confidence, and recurring flag
-        return jsonify({
-            "results": results
-        })
+            # Log the batch size and sample of the first request
+            logger.info(f"Processing batch prediction request with {len(data['rows'])} rows")
+            if len(data["rows"]) > 0:
+                logger.info(f"First row sample: {json.dumps(data['rows'][0])[:200]}...")
+            
+            # Process each row to extract features
+            all_features = []
+            for i, row in enumerate(data["rows"]):
+                try:
+                    # Log the customer name for debugging purposes only
+                    account_name = None
+                    if "Accountname" in row:
+                        account_name = row["Accountname"]
+                    elif "accountname" in row:
+                        account_name = row["accountname"]
+                    
+                    if account_name:
+                        # Just log the customer name for debugging - all processing happens in feature_extractor
+                        logger.info(f"Row {i+1} - Processing customer: '{account_name}'")
+                        if not feature_extractor.recurring_customers:
+                            logger.warning("No recurring customers loaded!")
+                    
+                    # Transform to features
+                    _, features, _ = feature_extractor.transform_quote(row)
+                    all_features.append(features)
+                    
+                    # Log the last feature (recurring flag) and feature count
+                    logger.info(f"Processed row {i+1}/{len(data['rows'])} - Last feature (recurring): {features[-1]}, Total features: {len(features)}")
+                except Exception as e:
+                    logger.error(f"Error processing row {i+1}: {str(e)}")
+                    return jsonify({"error": f"Error processing row {i+1}: {str(e)}"}), 400
+            
+            # Convert to numpy array for batch prediction
+            features_array = np.array(all_features)
+            
+            # Get prediction results
+            results = process_prediction(features_array)
+            
+            # Log final results before returning
+            logger.info(f"Batch processing complete. Returning {len(results)} results")
+            logger.info(f"Final results sample: {json.dumps(results[:min(3, len(results))])}")
+            
+            # Return batch results with prediction, confidence, and recurring flag
+            return jsonify({
+                "results": results
+            })
+        except Exception as e:
+        # Catch any unexpected server errors
+        logger.error(f"Unexpected server error: {str(e)}", exc_info=True)
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
     @app.route("/health", methods=["GET"])
     def health():
